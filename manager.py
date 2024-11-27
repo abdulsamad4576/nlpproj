@@ -14,8 +14,6 @@ import streamlit as st
 from whoosh.fields import Schema, TEXT, ID
 from whoosh.index import create_in, open_dir
 from whoosh.qparser import QueryParser
-from dotenv import load_dotenv
-load_dotenv()
 from utils import compute_time, connect_to_db, create_collection_if_not_exists, add_vectors, generate_vector,extract_step_ids
 QDRANT_API_KEY = st.secrets["QDRANT_API_KEY"]
 QDRANT_URL = st.secrets["QDRANT_URL"]
