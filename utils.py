@@ -9,9 +9,6 @@ import os
 
 from typing import List, Dict, Any
 
-from dotenv import load_dotenv; load_dotenv()
-load_dotenv()
-
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
