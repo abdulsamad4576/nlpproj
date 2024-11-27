@@ -327,12 +327,165 @@ class VectorDBManager:
 
 
 
+    # @compute_time
+    # def hierarchical_search(self, query: str, collection_name: str, program_id: str, limit: int = 5, step_id: int = None) -> List[Dict[str, Any]]:
+    #     #refined_query = self._refine_query_with_llm(query)
+    #     print(f"Original Query: '{query}'")
+    #     #print(f"Refined Query: '{refined_query}'")
+    #     refined_query=query
+    #     program_id = int(program_id)
+    #     query_vector = generate_vector(refined_query)
+
+    #     try:
+    #         # Add a filter for step_id if provided
+    #         step_filter = []
+    #         if step_id:
+    #             step_filter.append(FieldCondition(key="step_id", match=MatchValue(value=step_id)))
+    #             print(f"Searching within step_id: {step_id}")
+
+    #         # Step 1: Search at Page Level
+    #         print(f"Searching for pages with program_id: {program_id}")
+    #         page_search = self.db.search(
+    #             collection_name=collection_name,
+    #             query_vector=query_vector,
+    #             limit=limit * 5,
+    #             with_payload=True,
+    #             query_filter=Filter(
+    #                 must=[
+    #                     FieldCondition(key="program_id", match=MatchValue(value=program_id)),
+    #                     FieldCondition(key="level", match=MatchValue(value=2)),
+    #                     *step_filter  # Add the step_id filter if provided
+    #                 ]
+    #             ),
+    #         )
+    #         page_step_ids = [result.payload['step_id'] for result in page_search]
+    #         top_pages = [result.payload['page_num'] for result in page_search]
+    #         for i in range(len(top_pages)):
+    #             print(f"Page {top_pages[i]} has step_id: {page_step_ids[i]}")
+    #         if not top_pages:
+    #             print("No pages found at the page level.")
+    #             return []
+
+    #         # Step 2: Parallel Search at Paragraph Level using ThreadPoolExecutor
+    #         print("Searching paragraphs in parallel...")
+    #         top_paragraphs = []
+    #         with ThreadPoolExecutor() as executor:
+    #             paragraph_futures = {
+    #                 executor.submit(
+    #                     self.db.search,
+    #                     collection_name=collection_name,
+    #                     query_vector=query_vector,
+    #                     limit=limit * 3,
+    #                     with_payload=True,
+    #                     query_filter=Filter(
+    #                         must=[
+    #                             FieldCondition(key="program_id", match=MatchValue(value=program_id)),
+    #                             FieldCondition(key="page_num", match=MatchValue(value=page_num)),
+    #                             FieldCondition(key="level", match=MatchValue(value=3)),
+    #                             *step_filter  # Add the step_id filter if provided
+    #                         ]
+    #                     )
+    #                 ): page_num for page_num in top_pages
+    #             }
+    #             # Collect results from paragraph futures as they complete
+    #             for future in as_completed(paragraph_futures):
+    #                 top_paragraphs.extend(future.result())
+    #         # Sort paragraphs based on page and paragraph numbers
+    #         top_paragraphs = sorted(top_paragraphs, key=lambda x: (x.payload['page_num'], x.payload['paragraph_num']))
+    #         if not top_paragraphs:
+    #             print("No paragraphs found within the pages.")
+    #             return []
+
+    #         # Step 3: Parallel Search at Chunk Level using ThreadPoolExecutor
+    #         print("Searching chunks in parallel...")
+    #         top_chunks = []
+    #         with ThreadPoolExecutor() as executor:
+    #             chunk_futures = {
+    #                 executor.submit(
+    #                     self.db.search,
+    #                     collection_name=collection_name,
+    #                     query_vector=query_vector,
+    #                     limit=limit * 2,
+    #                     with_payload=True,
+    #                     query_filter=Filter(
+    #                         must=[
+    #                             FieldCondition(key="program_id", match=MatchValue(value=program_id)),
+    #                             FieldCondition(key="page_num", match=MatchValue(value=paragraph_result.payload['page_num'])),
+    #                             FieldCondition(key="paragraph_num", match=MatchValue(value=paragraph_result.payload['paragraph_num'])),
+    #                             FieldCondition(key="level", match=MatchValue(value=4)),
+    #                             *step_filter  # Add the step_id filter if provided
+    #                         ]
+    #                     )
+    #                 ): paragraph_result for paragraph_result in top_paragraphs
+    #             }
+    #             # Collect results from chunk futures as they complete
+    #             for future in as_completed(chunk_futures):
+    #                 top_chunks.extend(future.result())
+    #         # Sort chunks based on page, paragraph, and chunk numbers
+    #         top_chunks = sorted(top_chunks, key=lambda x: (x.payload['page_num'], x.payload['paragraph_num'], x.payload['chunk_num']))
+    #         if not top_chunks:
+    #             print("No chunks found within the paragraphs.")
+    #             return []
+
+    #         # Step 4: Keyword-based search using Whoosh
+    #         keyword_results = self._keyword_search(refined_query, top_n=limit * 10)
+
+    #         # Map context IDs back to their chunk IDs
+    #         keyword_chunk_ids = set()
+    #         for hit in keyword_results:
+    #             hit_id = hit['id']
+    #             chunk_id = hit_id[:-8] if hit_id.endswith("_context") else hit_id
+    #             keyword_chunk_ids.add(chunk_id)
+
+    #         # Step 5: Combine chunk-level results and boost scores for keyword matches
+    #         combined_results = {}
+    #         for result in top_chunks:
+    #             chunk_id = result.id
+    #             vector_score = result.score
+    #             combined_score = vector_score + 1.0 if chunk_id in keyword_chunk_ids else vector_score
+    #             combined_results[chunk_id] = {
+    #                 "combined_score": combined_score,
+    #                 "vector_score": vector_score,
+    #                 "payload": result.payload,
+    #             }
+
+    #         # Extract minimum and maximum combined scores
+    #         all_scores = [result['combined_score'] for result in combined_results.values()]
+    #         min_score = min(all_scores)
+    #         max_score = max(all_scores)
+
+    #         # Normalize the scores between 0 and 1
+    #         def normalize_score(score):
+    #             if max_score - min_score == 0:
+    #                 return 1.0  # Avoid division by zero in case all scores are the same
+    #             return (score - min_score) / (max_score - min_score)
+
+    #         # Manually sort the results based on the normalized score
+    #         sorted_combined_results = sorted(combined_results.items(), key=lambda x: normalize_score(x[1]['combined_score']), reverse=True)
+
+    #         # Prepare final results based on the limit
+    #         final_results = []
+    #         for chunk_id, result_info in sorted_combined_results[:limit]:
+    #             chunk_metadata = result_info["payload"]
+    #             chunk_content = chunk_metadata.get("current_chunk", "")
+    #             context = chunk_metadata.get("context", {})
+    #             final_results.append({
+    #                 "id": chunk_id,
+    #                 "score": normalize_score(result_info['combined_score']),
+    #                 "metadata": chunk_metadata,
+    #                 "content": chunk_content,
+    #                 "context": context
+    #             })
+
+    #         return final_results
+
+    #     except Exception as e:
+    #         print(f"Error during hierarchical search: {e}")
+    #         return []
     @compute_time
     def hierarchical_search(self, query: str, collection_name: str, program_id: str, limit: int = 5, step_id: int = None) -> List[Dict[str, Any]]:
-        #refined_query = self._refine_query_with_llm(query)
         print(f"Original Query: '{query}'")
-        #print(f"Refined Query: '{refined_query}'")
-        refined_query=query
+        refined_query = query  # Keeping the query as is for now
         program_id = int(program_id)
         query_vector = generate_vector(refined_query)
 
@@ -358,51 +511,31 @@ class VectorDBManager:
                     ]
                 ),
             )
-            page_step_ids = [result.payload['step_id'] for result in page_search]
-            top_pages = [result.payload['page_num'] for result in page_search]
-            for i in range(len(top_pages)):
-                print(f"Page {top_pages[i]} has step_id: {page_step_ids[i]}")
-            if not top_pages:
+            if not page_search:
                 print("No pages found at the page level.")
                 return []
 
-            # Step 2: Parallel Search at Paragraph Level using ThreadPoolExecutor
-            print("Searching paragraphs in parallel...")
-            top_paragraphs = []
-            with ThreadPoolExecutor() as executor:
-                paragraph_futures = {
-                    executor.submit(
-                        self.db.search,
-                        collection_name=collection_name,
-                        query_vector=query_vector,
-                        limit=limit * 3,
-                        with_payload=True,
-                        query_filter=Filter(
-                            must=[
-                                FieldCondition(key="program_id", match=MatchValue(value=program_id)),
-                                FieldCondition(key="page_num", match=MatchValue(value=page_num)),
-                                FieldCondition(key="level", match=MatchValue(value=3)),
-                                *step_filter  # Add the step_id filter if provided
-                            ]
-                        )
-                    ): page_num for page_num in top_pages
-                }
-                # Collect results from paragraph futures as they complete
-                for future in as_completed(paragraph_futures):
-                    top_paragraphs.extend(future.result())
-            # Sort paragraphs based on page and paragraph numbers
-            top_paragraphs = sorted(top_paragraphs, key=lambda x: (x.payload['page_num'], x.payload['paragraph_num']))
-            if not top_paragraphs:
-                print("No paragraphs found within the pages.")
-                return []
-
-            # Step 3: Parallel Search at Chunk Level using ThreadPoolExecutor
-            print("Searching chunks in parallel...")
-            top_chunks = []
-            with ThreadPoolExecutor() as executor:
-                chunk_futures = {
-                    executor.submit(
-                        self.db.search,
+            # Collect results from higher levels
+            top_chunks = []  # Final collection of chunks to consider
+            for page_result in page_search:
+                page_num = page_result.payload["page_num"]
+                paragraphs = self.db.search(
+                    collection_name=collection_name,
+                    query_vector=query_vector,
+                    limit=limit * 3,
+                    with_payload=True,
+                    query_filter=Filter(
+                        must=[
+                            FieldCondition(key="program_id", match=MatchValue(value=program_id)),
+                            FieldCondition(key="page_num", match=MatchValue(value=page_num)),
+                            FieldCondition(key="level", match=MatchValue(value=3)),
+                            *step_filter
+                        ]
+                    ),
+                )
+                for paragraph_result in paragraphs:
+                    paragraph_num = paragraph_result.payload["paragraph_num"]
+                    chunks = self.db.search(
                         collection_name=collection_name,
                         query_vector=query_vector,
                         limit=limit * 2,
@@ -410,72 +543,51 @@ class VectorDBManager:
                         query_filter=Filter(
                             must=[
                                 FieldCondition(key="program_id", match=MatchValue(value=program_id)),
-                                FieldCondition(key="page_num", match=MatchValue(value=paragraph_result.payload['page_num'])),
-                                FieldCondition(key="paragraph_num", match=MatchValue(value=paragraph_result.payload['paragraph_num'])),
+                                FieldCondition(key="page_num", match=MatchValue(value=page_num)),
+                                FieldCondition(key="paragraph_num", match=MatchValue(value=paragraph_num)),
                                 FieldCondition(key="level", match=MatchValue(value=4)),
-                                *step_filter  # Add the step_id filter if provided
+                                *step_filter
                             ]
-                        )
-                    ): paragraph_result for paragraph_result in top_paragraphs
-                }
-                # Collect results from chunk futures as they complete
-                for future in as_completed(chunk_futures):
-                    top_chunks.extend(future.result())
-            # Sort chunks based on page, paragraph, and chunk numbers
-            top_chunks = sorted(top_chunks, key=lambda x: (x.payload['page_num'], x.payload['paragraph_num'], x.payload['chunk_num']))
-            if not top_chunks:
-                print("No chunks found within the paragraphs.")
-                return []
+                        ),
+                    )
+                    top_chunks.extend(chunks)
 
-            # Step 4: Keyword-based search using Whoosh
-            keyword_results = self._keyword_search(refined_query, top_n=limit * 10)
-
-            # Map context IDs back to their chunk IDs
-            keyword_chunk_ids = set()
-            for hit in keyword_results:
-                hit_id = hit['id']
-                chunk_id = hit_id[:-8] if hit_id.endswith("_context") else hit_id
-                keyword_chunk_ids.add(chunk_id)
-
-            # Step 5: Combine chunk-level results and boost scores for keyword matches
+            # Normalize scores
             combined_results = {}
             for result in top_chunks:
                 chunk_id = result.id
                 vector_score = result.score
-                combined_score = vector_score + 1.0 if chunk_id in keyword_chunk_ids else vector_score
                 combined_results[chunk_id] = {
-                    "combined_score": combined_score,
                     "vector_score": vector_score,
-                    "payload": result.payload,
+                    "payload": result.payload
                 }
 
-            # Extract minimum and maximum combined scores
-            all_scores = [result['combined_score'] for result in combined_results.values()]
-            min_score = min(all_scores)
-            max_score = max(all_scores)
+            # Extract vector scores
+            vector_scores = [result["vector_score"] for result in combined_results.values()]
+            min_vector_score = min(vector_scores) if vector_scores else 0.0
+            max_vector_score = max(vector_scores) if vector_scores else 1.0
 
-            # Normalize the scores between 0 and 1
-            def normalize_score(score):
-                if max_score - min_score == 0:
-                    return 1.0  # Avoid division by zero in case all scores are the same
-                return (score - min_score) / (max_score - min_score)
-
-            # Manually sort the results based on the normalized score
-            sorted_combined_results = sorted(combined_results.items(), key=lambda x: normalize_score(x[1]['combined_score']), reverse=True)
-
-            # Prepare final results based on the limit
+            # Normalize scores and filter results
             final_results = []
-            for chunk_id, result_info in sorted_combined_results[:limit]:
-                chunk_metadata = result_info["payload"]
-                chunk_content = chunk_metadata.get("current_chunk", "")
-                context = chunk_metadata.get("context", {})
-                final_results.append({
-                    "id": chunk_id,
-                    "score": normalize_score(result_info['combined_score']),
-                    "metadata": chunk_metadata,
-                    "content": chunk_content,
-                    "context": context
-                })
+            for chunk_id, result_info in combined_results.items():
+                normalized_score = (
+                    (result_info["vector_score"] - min_vector_score) / (max_vector_score - min_vector_score)
+                    if max_vector_score > min_vector_score else 0.0
+                )
+                if normalized_score >= 0.5:  # Filter by a relevance threshold
+                    chunk_metadata = result_info["payload"]
+                    chunk_content = chunk_metadata.get("current_chunk", "")
+                    context = chunk_metadata.get("context", {})
+                    final_results.append({
+                        "id": chunk_id,
+                        "score": normalized_score,
+                        "metadata": chunk_metadata,
+                        "content": chunk_content,
+                        "context": context,
+                    })
+
+            # Sort final results by score
+            final_results = sorted(final_results, key=lambda x: x["score"], reverse=True)[:limit]
 
             return final_results
 
